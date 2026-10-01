@@ -2,13 +2,6 @@ library(shiny)
 library(plotly)
 library(dplyr)
 library(shinythemes)
-library(httr)
-library(jsonlite)
-
-# ------------------------------------------------------------------------------
-# Configuració Webhook (Google Apps Script Web App)
-# ------------------------------------------------------------------------------
-web_app_url <- "https://script.google.com/macros/s/AKfycbxiSkpd9-mzfIbApIzuw_oto54qlqZFA3uSg1W40sPCQKvNF5rEce6xXQ7xYndvIvSm-A/exec"
 
 # ------------------------------------------------------------------------------
 # 1. Definició de les opcions de resposta habituals
@@ -172,9 +165,6 @@ server <- function(input, output, session) {
   participant_id <- reactiveVal("")
   responses_wide <- reactiveVal(list())
   
-  # Variable de bloqueig per evitar duplicats
-  submitted <- reactiveVal(FALSE)
-  
   observe({
     showModal(modalDialog(
       title = "Identificació del Participant",
@@ -332,9 +322,16 @@ server <- function(input, output, session) {
     
     if (type == "slider") {
       is_na <- isTRUE(input$na_option)
-      current_data[[paste0(q_id, "_cat")]] <- if (is_na) NA else input$cat
-      current_data[[paste0(q_id, "_spa")]] <- if (is_na) NA else input$spa
-      current_data[[paste0(q_id, "_eng")]] <- if (is_na) NA else input$eng
+      if (is_na) {
+        current_data[[paste0(q_id, "_cat")]] <- NA
+        current_data[[paste0(q_id, "_spa")]] <- NA
+        current_data[[paste0(q_id, "_eng")]] <- NA
+      } else {
+        vals <- pie_values()
+        current_data[[paste0(q_id, "_cat")]] <- vals[["Català"]]
+        current_data[[paste0(q_id, "_spa")]] <- vals[["Castellà"]]
+        current_data[[paste0(q_id, "_eng")]] <- vals[["Anglès"]]
+      }
       current_data[[paste0(q_id, "_na")]]  <- is_na
     } else if (type == "likert5") {
       current_data[[q_id]] <- ifelse(is.null(input$resp_likert5), NA, input$resp_likert5)
@@ -365,42 +362,31 @@ server <- function(input, output, session) {
         updateCheckboxInput(session, "na_option", value = FALSE)
       }
     } else {
-      # Comprovació de bloqueig
-      if (submitted()) return()
-      submitted(TRUE)
+      df_export <- as.data.frame(responses_wide(), stringsAsFactors = FALSE)
+      local_file <- "responses_database.csv"
       
       tryCatch({
-        json_body <- jsonlite::toJSON(responses_wide(), auto_unbox = TRUE)
-        
-        # followlocation = FALSE evita la cadena de re-POSTs de Google
-        res <- httr::POST(
-          url = web_app_url,
-          body = json_body,
-          encode = "raw",
-          httr::content_type_json(),
-          httr::config(followlocation = FALSE)
-        )
-        
-        if (res$status_code %in% c(200, 302)) {
-          showModal(
-            modalDialog(
-              title = "Qüestionari Finalitzat",
-              p("Gràcies per la seva col·laboració! Les teves respostes s'han enviat i desat automàticament al Google Sheet."),
-              br(),
-              downloadButton("download_data", "Descarregar Còpia Local (CSV)", class = "btn-success btn-lg btn-block"),
-              easyClose = FALSE,
-              footer = NULL
-            )
-          )
+        if (!file.exists(local_file)) {
+          write.csv(df_export, local_file, row.names = FALSE)
         } else {
-          stop(paste("Codi de resposta inesperat del servidor:", res$status_code))
+          write.table(df_export, local_file, append = TRUE, sep = ",", col.names = FALSE, row.names = FALSE)
         }
-      }, error = function(e) {
-        submitted(FALSE)
+        
         showModal(
           modalDialog(
-            title = "Atenció: Error en la connexió",
-            p("No s'han pogut enviar les dades al Google Sheet automàticament."),
+            title = "Qüestionari Finalitzat",
+            p("Gràcies per la seva col·laboració! Les teves respostes s'han desat automàticament al fitxer local."),
+            br(),
+            downloadButton("download_data", "Descarregar Còpia Local (CSV)", class = "btn-success btn-lg btn-block"),
+            easyClose = FALSE,
+            footer = NULL
+          )
+        )
+      }, error = function(e) {
+        showModal(
+          modalDialog(
+            title = "Atenció: Error en desar el fitxer",
+            p("No s'han pogut desar les dades al fitxer local automàticament."),
             p(span(e$message, style = "color: red;")),
             br(),
             downloadButton("download_data", "Descarregar Resultats en CSV", class = "btn-warning btn-lg btn-block"),
@@ -416,4 +402,3 @@ server <- function(input, output, session) {
 # ------------------------------------------------------------------------------
 # 5. Execució de l'aplicació
 # ------------------------------------------------------------------------------
-shinyApp(ui, server)
