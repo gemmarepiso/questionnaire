@@ -45,8 +45,9 @@ questions <- data.frame(
     "m3_community_friends_to_child", "m3_child_to_community_friends",
     "m3_community_adults_to_child", "m3_child_to_community_adults",
     "m4_c1_parents_to_child", "m4_child_to_c1_parents",
+    "m4_c1_extended_family_to_child", "m4_child_to_c1_extended_family",
     "m4_c2_parents_to_child", "m4_child_to_c2_parents",
-    "m4_extended_family_to_child", "m4_child_to_extended_family"
+    "m4_c2_extended_family_to_child", "m4_child_to_c2_extended_family"
   ),
   module = c(
     "DADES INICIALS",
@@ -59,7 +60,7 @@ questions <- data.frame(
     rep("INFANT - MÒDUL 1: L'ENTORN DE LA LLAR", 6),
     rep("INFANT - MÒDUL 2: ESCOLA / ESCOLA BRESSOL", 4),
     rep("INFANT - MÒDUL 3: COMUNITAT LOCAL", 4),
-    rep("INFANT - MÒDUL 4: AVIS I FAMÍLIA EXTENSA", 6)
+    rep("INFANT - MÒDUL 4: AVIS I FAMÍLIA EXTENSA", 8)
   ),
   type = c(
     "text",
@@ -69,7 +70,7 @@ questions <- data.frame(
     rep("likert5", 5),
     "origin_group", "numeric", "text", "profile", "identity",
     "origin_group", "numeric", "text", "profile", "identity",
-    rep("slider", 20)
+    rep("slider", 22)
   ),
   question = c(
     "Nom del fill/a del participant:",
@@ -116,10 +117,12 @@ questions <- data.frame(
     "Pensa en una setmana típica de l'any actual. Quan l'infant està amb adults a la comunitat local, amb quina freqüència utilitza ell/ella cada llengua quan els parla?",
     "Pensa en una setmana típica de l'any actual. Amb quina freqüència utilitzen els PARES DEL CUIDADOR/A 1 cada llengua quan parlen amb l'infant?",
     "Pensa en una setmana típica de l'any actual. Amb quina freqüència utilitza l'infant cada llengua quan parla amb els PARES DEL CUIDADOR/A 1?",
+    "Pensa en trobades o situacions habituals amb la FAMÍLIA EXTENSA DEL CUIDADOR/A 1 (tiets, cosins, etc.). Amb quina freqüència utilitza aquesta família cada llengua quan parla amb l'infant?",
+    "Pensa en trobades o situacions habituals amb la FAMÍLIA EXTENSA DEL CUIDADOR/A 1. Amb quina freqüència utilitza l'infant cada llengua quan parla amb la família extensa del Cuidador/a 1?",
     "Pensa en una setmana típica de l'any actual. Amb quina freqüència utilitzen els PARES DEL CUIDADOR/A 2 cada llengua quan parlen amb l'infant?",
     "Pensa en una setmana típica de l'any actual. Amb quina freqüència utilitza l'infant cada llengua quan parla amb els PARES DEL CUIDADOR/A 2?",
-    "Pensa en trobades o situacions habituals amb la FAMÍLIA EXTENSA. Amb quina freqüència utilitza aquesta família cada llengua quan parla amb l'infant?",
-    "Pensa en trobades o situacions habituals amb la FAMÍLIA EXTENSA. Amb quina freqüència utilitza l'infant cada llengua quan parla amb la seva família extensa?"
+    "Pensa en trobades o situacions habituals amb la FAMÍLIA EXTENSA DEL CUIDADOR/A 2 (tiets, cosins, etc.). Amb quina freqüència utilitza aquesta família cada llengua quan parla amb l'infant?",
+    "Pensa en trobades o situacions habituals amb la FAMÍLIA EXTENSA DEL CUIDADOR/A 2. Amb quina freqüència utilitza l'infant cada llengua quan parla amb la família extensa del Cuidador/a 2?"
   ),
   stringsAsFactors = FALSE
 )
@@ -362,39 +365,16 @@ server <- function(input, output, session) {
         updateCheckboxInput(session, "na_option", value = FALSE)
       }
     } else {
-      df_export <- as.data.frame(responses_wide(), stringsAsFactors = FALSE)
-      local_file <- "responses_database.csv"
-      
-      tryCatch({
-        if (!file.exists(local_file)) {
-          write.csv(df_export, local_file, row.names = FALSE)
-        } else {
-          write.table(df_export, local_file, append = TRUE, sep = ",", col.names = FALSE, row.names = FALSE)
-        }
-        
-        showModal(
-          modalDialog(
-            title = "Qüestionari Finalitzat",
-            p("Gràcies per la seva col·laboració! Les teves respostes s'han desat automàticament al fitxer local."),
-            br(),
-            downloadButton("download_data", "Descarregar Còpia Local (CSV)", class = "btn-success btn-lg btn-block"),
-            easyClose = FALSE,
-            footer = NULL
-          )
+      showModal(
+        modalDialog(
+          title = "Qüestionari Finalitzat",
+          p("Gràcies per la seva col·laboració! Clica al botó inferior per descarregar les respostes en format CSV."),
+          br(),
+          downloadButton("download_data", "Descarregar CSV", class = "btn-success btn-lg btn-block"),
+          easyClose = FALSE,
+          footer = NULL
         )
-      }, error = function(e) {
-        showModal(
-          modalDialog(
-            title = "Atenció: Error en desar el fitxer",
-            p("No s'han pogut desar les dades al fitxer local automàticament."),
-            p(span(e$message, style = "color: red;")),
-            br(),
-            downloadButton("download_data", "Descarregar Resultats en CSV", class = "btn-warning btn-lg btn-block"),
-            easyClose = FALSE,
-            footer = NULL
-          )
-        )
-      })
+      )
     }
   })
 }
