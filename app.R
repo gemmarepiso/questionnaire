@@ -28,11 +28,11 @@ identity_opts <- c(
 )
 
 # ------------------------------------------------------------------------------
-# 2. Data frame amb totes les preguntes integrades
+# 2. Data frame amb totes les preguntes integrades (inclou Data de Naixement)
 # ------------------------------------------------------------------------------
 questions <- data.frame(
   id = c(
-    "m0_child_name",
+    "m0_child_name", "m0_child_dob",
     "h06_home", "h06_extended", "h06_friends", "h06_school",
     "h612_home", "h612_extended", "h612_friends", "h612_school",
     "h1218_home", "h1218_extended", "h1218_friends", "h1218_school",
@@ -50,7 +50,7 @@ questions <- data.frame(
     "m4_c2_extended_family_to_child", "m4_child_to_c2_extended_family"
   ),
   module = c(
-    "DADES INICIALS",
+    rep("DADES INICIALS", 2),
     rep("HISTORIAL LINGÜÍSTIC CUIDADOR/A: ESCOLA BRESSOL I INFANTIL (0-6 ANYS)", 4),
     rep("HISTORIAL LINGÜÍSTIC CUIDADOR/A: ESCOLA PRIMÀRIA (6-12 ANYS)", 4),
     rep("HISTORIAL LINGÜÍSTIC CUIDADOR/A: ESCOLA SECUNDÀRIA (12-18 ANYS)", 4),
@@ -63,7 +63,7 @@ questions <- data.frame(
     rep("INFANT - MÒDUL 4: AVIS I FAMÍLIA EXTENSA", 8)
   ),
   type = c(
-    "text",
+    "text", "date",
     rep("likert5", 4),
     rep("likert5", 4),
     rep("likert5", 4),
@@ -74,6 +74,7 @@ questions <- data.frame(
   ),
   question = c(
     "Nom del fill/a del participant:",
+    "Data de naixement de l'infant:",
     "Dels 0 als 6 anys, quina llengua solies fer servir a casa teva amb la teva família més propera?",
     "Dels 0 als 6 anys, quina llengua solies fer servir amb els teus parents que no vivien amb tu (p. ex. tiets, cosins)?",
     "Dels 0 als 6 anys, quina llengua solies fer servir amb els teus amics?",
@@ -228,6 +229,8 @@ server <- function(input, output, session) {
         sliderInput("spa", "Castellà (%)", min = 0, max = 100, value = 33),
         sliderInput("eng", "Anglès (%)", min = 0, max = 100, value = 33)
       )
+    } else if (type == "date") {
+      dateInput("resp_date", "Selecciona la data:", value = "2020-01-01", format = "dd/mm/yyyy", language = "ca")
     } else if (type == "likert5") {
       radioButtons("resp_likert5", "Selecciona una opció:", choices = likert_5_opts, selected = character(0))
     } else if (type == "profile") {
@@ -308,12 +311,26 @@ server <- function(input, output, session) {
       )
   })
   
+  # Safe Download Handler: Prevents HTML generation and server crashes
   output$download_data <- downloadHandler(
     filename = function() {
       paste0("Language_Questionnaire_", participant_id(), "_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
     },
     content = function(file) {
-      df_export <- as.data.frame(responses_wide(), stringsAsFactors = FALSE)
+      data_list <- responses_wide()
+      
+      # Clean NULLs and character(0) into valid strings/NAs
+      clean_list <- lapply(data_list, function(x) {
+        if (is.null(x) || length(x) == 0) {
+          return(NA_character_)
+        } else if (length(x) > 1) {
+          return(paste(x, collapse = "; "))
+        } else {
+          return(as.character(x))
+        }
+      })
+      
+      df_export <- as.data.frame(clean_list, stringsAsFactors = FALSE)
       write.csv(df_export, file, row.names = FALSE)
     }
   )
@@ -322,6 +339,13 @@ server <- function(input, output, session) {
     q_id <- q_info()$id
     type <- q_info()$type
     current_data <- responses_wide()
+    
+    get_val <- function(x) {
+      if (is.null(x) || length(x) == 0 || (is.character(x) && trimws(x) == "")) {
+        return(NA_character_)
+      }
+      return(x)
+    }
     
     if (type == "slider") {
       is_na <- isTRUE(input$na_option)
@@ -336,25 +360,27 @@ server <- function(input, output, session) {
         current_data[[paste0(q_id, "_eng")]] <- vals[["Anglès"]]
       }
       current_data[[paste0(q_id, "_na")]]  <- is_na
+    } else if (type == "date") {
+      current_data[[q_id]] <- get_val(format(input$resp_date, "%Y-%m-%d"))
     } else if (type == "likert5") {
-      current_data[[q_id]] <- ifelse(is.null(input$resp_likert5), NA, input$resp_likert5)
+      current_data[[q_id]] <- get_val(input$resp_likert5)
     } else if (type == "profile") {
-      current_data[[q_id]] <- ifelse(is.null(input$resp_profile), NA, input$resp_profile)
+      current_data[[q_id]] <- get_val(input$resp_profile)
     } else if (type == "identity") {
-      current_data[[q_id]] <- ifelse(is.null(input$resp_identity), NA, input$resp_identity)
+      current_data[[q_id]] <- get_val(input$resp_identity)
     } else if (type == "numeric") {
-      current_data[[q_id]] <- ifelse(is.null(input$resp_numeric), NA, input$resp_numeric)
+      current_data[[q_id]] <- get_val(input$resp_numeric)
     } else if (type == "text") {
-      current_data[[q_id]] <- ifelse(is.null(input$resp_text), NA, input$resp_text)
+      current_data[[q_id]] <- get_val(input$resp_text)
     } else if (type == "origin_group") {
       prefix <- ifelse(q_id == "b1_origins", "b1", "b2")
-      current_data[[paste0(prefix, "_origin_subject")]] <- input[[paste0(prefix, "_subject")]]
-      current_data[[paste0(prefix, "_origin_mother")]]  <- input[[paste0(prefix, "_mother")]]
-      current_data[[paste0(prefix, "_origin_father")]]  <- input[[paste0(prefix, "_father")]]
-      current_data[[paste0(prefix, "_origin_mat_gm")]]  <- input[[paste0(prefix, "_mat_gm")]]
-      current_data[[paste0(prefix, "_origin_mat_gf")]]  <- input[[paste0(prefix, "_mat_gf")]]
-      current_data[[paste0(prefix, "_origin_pat_gm")]]  <- input[[paste0(prefix, "_pat_gm")]]
-      current_data[[paste0(prefix, "_origin_pat_gf")]]  <- input[[paste0(prefix, "_pat_gf")]]
+      current_data[[paste0(prefix, "_origin_subject")]] <- get_val(input[[paste0(prefix, "_subject")]])
+      current_data[[paste0(prefix, "_origin_mother")]]  <- get_val(input[[paste0(prefix, "_mother")]])
+      current_data[[paste0(prefix, "_origin_father")]]  <- get_val(input[[paste0(prefix, "_father")]])
+      current_data[[paste0(prefix, "_origin_mat_gm")]]  <- get_val(input[[paste0(prefix, "_mat_gm")]])
+      current_data[[paste0(prefix, "_origin_mat_gf")]]  <- get_val(input[[paste0(prefix, "_mat_gf")]])
+      current_data[[paste0(prefix, "_origin_pat_gm")]]  <- get_val(input[[paste0(prefix, "_pat_gm")]])
+      current_data[[paste0(prefix, "_origin_pat_gf")]]  <- get_val(input[[paste0(prefix, "_pat_gf")]])
     }
     
     responses_wide(current_data)
