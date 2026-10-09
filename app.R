@@ -28,7 +28,7 @@ identity_opts <- c(
 )
 
 # ------------------------------------------------------------------------------
-# 2. Data frame amb totes les preguntes integrades (inclou Data de Naixement)
+# 2. Data frame amb totes les preguntes integrades
 # ------------------------------------------------------------------------------
 questions <- data.frame(
   id = c(
@@ -135,6 +135,24 @@ lang_colors <- c("Català" = "#D9534F", "Castellà" = "#F0AD4E", "Anglès" = "#5
 # ------------------------------------------------------------------------------
 ui <- fluidPage(
   theme = shinythemes::shinytheme("flatly"),
+  
+  # Inject Client-Side JavaScript Downloader
+  tags$head(
+    tags$script(HTML("
+      Shiny.addCustomMessageHandler('trigger_csv_download', function(data) {
+        var blob = new Blob([data.csv_content], { type: 'text/csv;charset=utf-8;' });
+        var link = document.createElement('a');
+        var url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', data.filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+    "))
+  ),
+  
   titlePanel("Enquesta Lingüística per a Bilingües i Ús en l'Infant"),
   
   sidebarLayout(
@@ -311,29 +329,35 @@ server <- function(input, output, session) {
       )
   })
   
-  # Safe Download Handler: Prevents HTML generation and server crashes
-  output$download_data <- downloadHandler(
-    filename = function() {
-      paste0("Language_Questionnaire_", participant_id(), "_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
-    },
-    content = function(file) {
-      data_list <- responses_wide()
-      
-      # Clean NULLs and character(0) into valid strings/NAs
-      clean_list <- lapply(data_list, function(x) {
-        if (is.null(x) || length(x) == 0) {
-          return(NA_character_)
-        } else if (length(x) > 1) {
-          return(paste(x, collapse = "; "))
-        } else {
-          return(as.character(x))
-        }
-      })
-      
-      df_export <- as.data.frame(clean_list, stringsAsFactors = FALSE)
-      write.csv(df_export, file, row.names = FALSE)
-    }
-  )
+  # Trigger Client-Side CSV Download via JavaScript
+  observeEvent(input$trigger_download, {
+    data_list <- responses_wide()
+    
+    clean_list <- lapply(data_list, function(x) {
+      if (is.null(x) || length(x) == 0) {
+        return(NA_character_)
+      } else if (length(x) > 1) {
+        return(paste(x, collapse = "; "))
+      } else {
+        return(as.character(x))
+      }
+    })
+    
+    df_export <- as.data.frame(clean_list, stringsAsFactors = FALSE)
+    
+    # Convert data frame to CSV text in memory
+    csv_conn <- textConnection("csv_text_out", "w")
+    write.csv(df_export, csv_conn, row.names = FALSE)
+    close(csv_conn)
+    
+    raw_csv <- paste(csv_text_out, collapse = "\n")
+    filename_str <- paste0("Language_Questionnaire_", participant_id(), "_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+    
+    session$sendCustomMessage("trigger_csv_download", list(
+      filename = filename_str,
+      csv_content = raw_csv
+    ))
+  })
   
   observeEvent(input$next_btn, {
     q_id <- q_info()$id
@@ -396,7 +420,7 @@ server <- function(input, output, session) {
           title = "Qüestionari Finalitzat",
           p("Gràcies per la seva col·laboració! Clica al botó inferior per descarregar les respostes en format CSV."),
           br(),
-          downloadButton("download_data", "Descarregar CSV", class = "btn-success btn-lg btn-block"),
+          actionButton("trigger_download", "Descarregar CSV", class = "btn-success btn-lg btn-block"),
           easyClose = FALSE,
           footer = NULL
         )
